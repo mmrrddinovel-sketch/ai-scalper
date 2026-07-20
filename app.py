@@ -1,95 +1,107 @@
 import streamlit as st
-import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 from datetime import datetime
 import time
 import threading
-import queue
 
-st.set_page_config(page_title="ScalpX — Реал-тайм", layout="wide", page_icon="🪙")
+st.set_page_config(page_title="ScalpX", layout="wide", page_icon="🪙")
 
 # Session State
 if 'data' not in st.session_state:
-    st.session_state.data = pd.DataFrame()
+    st.session_state.data = pd.DataFrame(columns=['time', 'price'])
+if 'signals_history' not in st.session_state:
+    st.session_state.signals_history = []
 if 'running' not in st.session_state:
     st.session_state.running = True
 
-# Симулятор WebSocket
+# Background price updater (имитация WebSocket)
 def price_updater():
-    symbol = "XAUUSD"
     price = 4032.45
-    timestamps = []
-    closes = []
-    
     while st.session_state.running:
-        time.sleep(2)  # обновление каждые 2 секунды
-        price += np.random.normal(0, 1.2)
+        time.sleep(2)
+        price += np.random.normal(0, 1.5)
         
-        timestamps.append(datetime.now())
-        closes.append(price)
-        
-        # Оставляем последние 200 точек
-        if len(timestamps) > 200:
-            timestamps = timestamps[-200:]
-            closes = closes[-200:]
-        
-        df = pd.DataFrame({
-            'timestamp': timestamps,
-            'Close': closes,
-            'Open': [c * 0.999 for c in closes],
-            'High': [c * 1.002 for c in closes],
-            'Low': [c * 0.998 for c in closes]
+        new_row = pd.DataFrame({
+            'time': [datetime.now()],
+            'price': [price]
         })
-        st.session_state.data = df
+        st.session_state.data = pd.concat([st.session_state.data, new_row]).tail(200)
 
-# Запуск потока
-if not any(isinstance(t, threading.Thread) and t.is_alive() for t in threading.enumerate()):
-    thread = threading.Thread(target=price_updater, daemon=True)
+# Запуск потока один раз
+if len([t for t in threading.enumerate() if t.name == "price_updater"]) == 0:
+    thread = threading.Thread(target=price_updater, daemon=True, name="price_updater")
     thread.start()
 
+# ==================== Функция генерации сигнала ====================
+def generate_signal():
+    if st.session_state.data.empty:
+        return "⏳ Данные ещё загружаются..."
+    
+    current_price = st.session_state.data['price'].iloc[-1]
+    ma_short = st.session_state.data['price'].rolling(9).mean().iloc[-1]
+    ma_long = st.session_state.data['price'].rolling(21).mean().iloc[-1]
+    
+    if current_price > ma_short > ma_long:
+        signal = "🟢 **STRONG BUY**"
+        reason = "Цена выше обеих скользящих средних (бычий тренд)"
+        levels = "TP: +18p | SL: -9p"
+    elif current_price < ma_short < ma_long:
+        signal = "🔴 **STRONG SELL**"
+        reason = "Цена ниже обеих скользящих средних (медвежий тренд)"
+        levels = "TP: +15p | SL: -8p"
+    else:
+        signal = "🟡 **НЕЙТРАЛЬНО**"
+        reason = "Цена между MA9 и MA21 — ждём пробоя"
+        levels = "Наблюдаем"
+    
+    full_signal = {
+        "time": datetime.now().strftime("%H:%M:%S"),
+        "signal": signal,
+        "reason": reason,
+        "levels": levels,
+        "price": round(current_price, 2)
+    }
+    
+    st.session_state.signals_history.insert(0, full_signal)
+    if len(st.session_state.signals_history) > 10:
+        st.session_state.signals_history.pop()
+    
+    return full_signal
+
 # ==================== UI ====================
-st.title("🪙 ScalpX — Скальпинг Бот (Реал-тайм)")
+st.title("🪙 ScalpX — Скальпинг Бот")
 
 col1, col2 = st.columns([3, 2])
 
 with col1:
     st.subheader("XAUUSD — Живой график")
     if not st.session_state.data.empty:
-        df = st.session_state.data
-        
-        fig = go.Figure()
-        fig.add_trace(go.Candlestick(
-            x=df['timestamp'],
-            open=df['Open'],
-            high=df['High'],
-            low=df['Low'],
-            close=df['Close'],
-            name="XAUUSD"
-        ))
-        fig.update_layout(height=650, template="plotly_dark", xaxis_rangeslider_visible=False)
-        st.plotly_chart(fig, use_container_width=True)
+        st.line_chart(st.session_state.data.set_index('time')['price'], use_container_width=True)
     else:
-        st.info("Ожидаем первые данные...")
+        st.info("Ожидаем первые тики...")
 
 with col2:
     if not st.session_state.data.empty:
-        current_price = st.session_state.data['Close'].iloc[-1]
-        change = current_price - st.session_state.data['Close'].iloc[-2] if len(st.session_state.data) > 1 else 0
-        
-        st.metric(
-            label="Текущая цена XAUUSD",
-            value=f"${current_price:.2f}",
-            delta=f"{change:+.2f}"
-        )
+        current = st.session_state.data['price'].iloc[-1]
+        delta = current - st.session_state.data['price'].iloc[-2] if len(st.session_state.data) > 1 else 0
+        st.metric("Текущая цена XAUUSD", f"${current:.2f}", f"{delta:+.2f}")
     
-    st.subheader("Сигналы")
-    if not st.session_state.data.empty:
-        st.success("🟢 BUY — Цена выше MA9")
-        st.error("🔴 SELL — Возможный откат")
+    # Кнопка запроса сигнала
+    if st.button("📡 Запросить сигнал сейчас", type="primary", use_container_width=True):
+        with st.spinner("Анализирую рынок..."):
+            signal = generate_signal()
+            st.success(f"{signal['signal']} по цене ${signal['price']}")
+            st.caption(signal['reason'])
+            st.caption(signal['levels'])
     
-    if st.button("🛑 Остановить обновления"):
-        st.session_state.running = False
-        st.warning("Обновления остановлены")
+    st.subheader("История сигналов")
+    if st.session_state.signals_history:
+        for s in st.session_state.signals_history[:5]:
+            st.markdown(f"**{s['time']}** — {s['signal']} @ ${s['price']}")
+            st.caption(s['reason'])
+            st.divider()
+    else:
+        st.info("Нажми кнопку выше, чтобы получить первый сигнал")
 
-st.caption("Данные обновляются в реальном времени через background thread (имитация WebSocket)")
+st.caption("Цены обновляются автоматически • Нажми кнопку для мгновенного сигнала")
