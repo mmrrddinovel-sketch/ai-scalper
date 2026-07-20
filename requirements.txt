@@ -1,7 +1,5 @@
 streamlit
-yfinance
 pandas
-groq
-google-generativeai
-anthropic
-pyalgotrade
+plotly
+yfinance
+numpy
