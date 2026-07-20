@@ -3,28 +3,33 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
+# Настройка
 st.set_page_config(page_title="Pro Scalper AI", layout="centered")
 st.title("⚡ Pro Scalper AI (Neural Core)")
 
 ticker = "GC=F"
 
-@st.cache_data(ttl=5) # Сократили TTL для актуальности данных
+@st.cache_data(ttl=5)
 def fetch_market_data(t):
     try:
-        # Увеличили объем данных для более точного расчета EMA
         df = yf.download(t, period="2d", interval="1m", progress=False)
-        return df.dropna() if not df.empty else None
+        if df.empty: return None
+        # Приводим к плоскому формату, чтобы избежать ошибок размерности
+        if isinstance(df['Close'], pd.DataFrame):
+            return df['Close'].iloc[:, 0]
+        return df['Close']
     except:
         return None
 
-def professional_scalping_ai(df):
-    close = df['Close'].values # Работа напрямую с массивами NumPy для скорости
-    
-    # Расчет индикаторов
+def get_ai_signal(close_data):
+    # Преобразуем в массив numpy для скорости
+    close = close_data.values
+    if len(close) < 30: return "🟡 Инициализация...", 0, 0, "Сбор данных..."
+
+    # Индикаторы
     ema9 = pd.Series(close).ewm(span=9).mean().values
     ema21 = pd.Series(close).ewm(span=21).mean().values
     
-    # RSI (исправленный расчет через NumPy)
     delta = np.diff(close, prepend=close[0])
     gain = np.where(delta > 0, delta, 0)
     loss = np.where(delta < 0, -delta, 0)
@@ -33,30 +38,26 @@ def professional_scalping_ai(df):
     rs = avg_gain / (avg_loss + 1e-9)
     rsi = 100 - (100 / (1 + rs))
     
-    # Получаем последние значения, проверяя на наличие данных
-    if len(close) < 21: return "🟡 НЕТ ДАННЫХ", 0, 0, "Инициализация..."
+    c_rsi, c_price = rsi[-1], close[-1]
     
-    c_rsi, c_price, c_ema9, c_ema21 = rsi[-1], close[-1], ema9[-1], ema21[-1]
+    # Логика сигнала
+    if c_rsi < 32 and ema9[-1] > ema21[-1]:
+        return "🟢 BUY", c_rsi, c_price, "Импульс вверх + RSI перепродан"
+    elif c_rsi > 68 and ema9[-1] < ema21[-1]:
+        return "🔴 SELL", c_rsi, c_price, "Импульс вниз + RSI перекуплен"
     
-    # AI-логика: Рассчитываем Score уверенности (Neural Confidence)
-    ema_diff = abs(c_ema9 - c_ema21)
-    confidence = "High" if ema_diff > (np.std(close[-50:]) * 0.1) else "Low"
-    
-    # Принятие решения
-    if c_rsi < 30 and c_ema9 > c_ema21:
-        return "🟢 BUY (AI-Validated)", c_rsi, c_price, f"Confidence: {confidence}. Импульс восходящий."
-    elif c_rsi > 70 and c_ema9 < c_ema21:
-        return "🔴 SELL (AI-Validated)", c_rsi, c_price, f"Confidence: {confidence}. Импульс нисходящий."
-    
-    return "🟡 WAIT / NEUTRAL", c_rsi, c_price, "Ожидание формирования ИИ-сигнала"
+    return "🟡 WAIT", c_rsi, c_price, "Нейтральная зона"
 
+# Интерфейс
 if st.button("🚀 SCAN MARKET"):
     data = fetch_market_data(ticker)
     if data is not None:
-        signal, rsi_val, price, reason = professional_scalping_ai(data)
+        signal, rsi_val, price, reason = get_ai_signal(data)
         st.metric("Price", f"{price:.2f}")
-        st.metric("AI Signal", signal)
-        st.write(f"**RSI:** {rsi_val:.2f} | **Status:** {reason}")
+        st.subheader(f"Status: {signal}")
+        st.write(f"RSI: {rsi_val:.2f}")
+        st.write(f"Logic: {reason}")
     else:
-        st.error("Данные недоступны.")
+        st.error("Ошибка данных. Попробуйте еще раз.")
+
 
