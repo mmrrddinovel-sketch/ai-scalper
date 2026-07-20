@@ -3,3 +3,4 @@ yfinance
 pandas
 groq
 google-generativeai
+anthropic
