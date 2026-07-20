@@ -7,27 +7,28 @@ from sklearn.ensemble import RandomForestClassifier
 # Настройка страницы
 st.set_page_config(page_title="AI Scalping Pro", page_icon="📈", layout="centered")
 
-st.title("🤖 AI Scalper Pro (GOLD Ready)")
+st.title("🤖 AI Scalper Pro (Fixed)")
 
 # --- БОКОВАЯ ПАНЕЛЬ НАСТРОЕК ---
 st.sidebar.header("⚙️ Конфигурация ИИ")
 sensitivity = st.sidebar.slider("Порог уверенности (%), для точности", 50, 80, 65)
 estimators = st.sidebar.slider("Глубина анализа (n_estimators)", 50, 300, 150)
 
-# Список активов
+# Стабильные тикеры
 symbols = {
-    "GOLD (XAU/USD)": "XAUUSD=X", 
-    "EUR/USD": "EURUSD=X", 
+    "GOLD (XAU/USD)": "GC=F", 
+    "EUR/USD": "EUR=X", 
     "BTC/USD": "BTC-USD"
 }
 selected = st.selectbox("Выберите актив:", list(symbols.keys()))
 
 # --- ЛОГИКА ИИ ---
 if st.button("🚀 Анализировать рынок", use_container_width=True):
-    with st.spinner("ИИ вычисляет паттерны..."):
+    with st.spinner("Загрузка данных и анализ..."):
         try:
             ticker = symbols[selected]
-            data = yf.download(ticker, period="1d", interval="1m", progress=False)
+            # Добавлен timeout для стабильности
+            data = yf.download(ticker, period="1d", interval="1m", progress=False, timeout=20)
             
             if len(data) > 30:
                 close = data['Close'].iloc[:, 0] if isinstance(data['Close'], pd.DataFrame) else data['Close']
@@ -55,23 +56,26 @@ if st.button("🚀 Анализировать рынок", use_container_width=T
                     st.error("🔴 СИГНАЛ: SELL")
                 else:
                     st.info("🟡 СИГНАЛ: ВНЕ РЫНКА (WAIT)")
+            else:
+                st.warning("Недостаточно данных. Попробуйте выбрать другой актив или подождите.")
         except Exception as e:
-            st.error(f"Ошибка: {e}")
+            st.error(f"Ошибка получения данных: {e}")
 
 # --- ЧАТ ---
 st.divider()
-st.subheader("💬 Чат с ИИ-помощником")
+st.subheader("💬 Чат с ИИ")
 if "messages" not in st.session_state: st.session_state.messages = []
 for msg in st.session_state.messages: st.chat_message(msg["role"]).markdown(msg["content"])
 
-if prompt := st.chat_input("Спроси про золото или риск..."):
+if prompt := st.chat_input("Задайте вопрос по рынку..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.chat_message("user").markdown(prompt)
     
-    response = "Я анализирую ситуацию. Помните: золото (XAU/USD) очень волатильно. Используйте настройки слева, чтобы повысить точность сигналов."
-    if "золот" in prompt.lower(): response = "Золото сейчас находится под давлением. Для входа ждите подтверждения сигнала с вероятностью выше вашего порога."
+    response = "Я анализирую ситуацию. Используйте настройки слева, чтобы повысить точность сигналов."
+    if "золот" in prompt.lower(): response = "Золото (GC=F) сейчас очень волатильно. Внимательно следите за уровнем Stop-Loss."
     
     st.session_state.messages.append({"role": "assistant", "content": response})
     st.chat_message("assistant").markdown(response)
+
 
 
