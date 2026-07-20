@@ -5,43 +5,48 @@ from groq import Groq
 import google.generativeai as genai
 from anthropic import Anthropic
 
-# Элитный дизайн
 st.set_page_config(page_title="ELITE QUANT CORE", layout="wide")
-st.markdown("""
-    <style>
-    .main {background-color: #050505; color: #ffd700;}
-    h1 {text-align: center; color: #ffd700; text-transform: uppercase; letter-spacing: 5px;}
-    .stMetric {background: #111; padding: 20px; border-left: 5px solid #ffd700; border-radius: 10px;}
-    </style>
-""", unsafe_allow_html=True)
+st.markdown("<style>.main {background-color: #050505; color: #ffd700;}</style>", unsafe_allow_html=True)
 
 st.title("⚡ ELITE QUANTUM CORE")
 
-# Боковая панель
+# Список активов
+assets = {
+    "GOLD (XAUUSD)": "GC=F",
+    "EUR/USD": "EURUSD=X",
+    "GBP/USD": "GBPUSD=X",
+    "BITCOIN (BTC/USD)": "BTC-USD",
+    "ETH/USD": "ETH-USD"
+}
+
 with st.sidebar:
-    st.header("⚙️ КОНФИГУРАЦИЯ")
-    ticker = st.selectbox("ВЫБОР АКТИВА:", ["XAUUSD=X", "GC=F"])
-    ai_model = st.selectbox("ВЫБОР ИИ-АНАЛИТИКА:", ["Groq (Llama 3)", "Google Gemini", "Claude"])
-    api_key = st.text_input(f"API КЛЮЧ ДЛЯ {ai_model}:", type="password")
+    selected_name = st.selectbox("ВЫБОР АКТИВА:", list(assets.keys()))
+    ticker = assets[selected_name]
+    ai_model = st.selectbox("ИИ-АНАЛИТИК:", ["Groq (Llama 3)", "Google Gemini", "Claude"])
+    api_key = st.text_input("API КЛЮЧ:", type="password")
 
-@st.cache_data(ttl=5)
-def get_data(symbol):
+@st.cache_data(ttl=10)
+def get_price(symbol):
     try:
-        df = yf.download(symbol, period="1d", interval="5m", progress=False)
-        return df['Close'].iloc[-1] if not df.empty else None
-    except: return None
+        data = yf.download(symbol, period="1d", interval="5m", progress=False)
+        if not data.empty and 'Close' in data.columns:
+            val = data['Close'].iloc[-1]
+            return float(val.iloc[0]) if hasattr(val, 'iloc') else float(val)
+    except:
+        return None
+    return None
 
-# Анализ
-price = get_data(ticker)
-if price:
-    st.metric(f"ТЕКУЩАЯ ЦЕНА ({ticker})", f"{price:.2f}")
+price = get_price(ticker)
+
+if price is not None:
+    st.metric(f"ТЕКУЩАЯ ЦЕНА ({selected_name})", f"{price:,.2f}")
     
-    if st.button("🚀 АНАЛИЗ С ПОМОЩЬЮ ИИ"):
+    if st.button("🚀 АНАЛИЗ С ИИ"):
         if not api_key:
-            st.error("Введите API ключ в боковой панели!")
+            st.warning("Введите ключ API в боковой панели!")
         else:
-            with st.spinner(f"ИИ {ai_model} рассчитывает вероятность..."):
-                prompt = f"Цена золота {ticker}: {price}. Проведи скальпинг-анализ и дай рекомендацию BUY/SELL."
+            with st.spinner("Анализ..."):
+                prompt = f"Цена {selected_name}: {price}. Проведи скальпинг-анализ и дай торговый сигнал BUY/SELL."
                 try:
                     if ai_model == "Groq (Llama 3)":
                         client = Groq(api_key=api_key)
@@ -58,4 +63,6 @@ if price:
                 except Exception as e:
                     st.error(f"Ошибка ИИ: {e}")
 else:
-    st.error("Данные недоступны. Попробуйте сменить актив.")
+    st.write("⏳ Ожидание данных...")
+    if st.button("🔄 Обновить"):
+        st.rerun()
