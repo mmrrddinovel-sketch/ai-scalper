@@ -8,7 +8,7 @@ st.markdown("<style>.main {background-color: #050505; color: #00ff00; font-famil
 
 st.title("💀 HackerAI: ULTIMATE PRO TERMINAL")
 
-# Полный список доступных ликвидных активов
+# Список всех популярных пар для торговли
 all_assets = [
     "EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDCHF=X", "NZDUSD=X", "USDCAD=X", 
     "EURGBP=X", "EURJPY=X", "GBPJPY=X", "AUDJPY=X", "CHFJPY=X", "EURCAD=X", "GBPCAD=X",
@@ -18,56 +18,60 @@ all_assets = [
 with st.sidebar:
     api_key = st.text_input("ENTER GEMINI API KEY:", type="password")
     asset = st.selectbox("ВЫБОР АКТИВА:", all_assets)
-    st.warning("Примечание: Бот анализирует рыночные данные. OTC-активы брокера являются синтетическими, используйте анализ основной пары как ориентир.")
 
 def get_pro_data(symbol):
     try:
         df = yf.download(symbol, period="5d", interval="15m", progress=False)
-        if df.empty or 'Close' not in df.columns: return None
+        if df.empty: return None
         
-        df['SMA_20'] = df['Close'].rolling(20).mean()
-        df['StdDev'] = df['Close'].rolling(20).std()
-        df['Upper'] = df['SMA_20'] + (df['StdDev'] * 2)
-        df['Lower'] = df['SMA_20'] - (df['StdDev'] * 2)
+        # Берем последнюю строку данных
+        last_row = df.iloc[-1]
+        
+        # Расчет индикаторов
+        sma = df['Close'].rolling(20).mean().iloc[-1]
+        std = df['Close'].rolling(20).std().iloc[-1]
+        upper = sma + (std * 2)
+        lower = sma - (std * 2)
         
         delta = df['Close'].diff()
-        gain = (delta.where(delta > 0, 0)).fillna(0).rolling(14).mean()
-        loss = (-delta.where(delta < 0, 0)).fillna(0).rolling(14).mean()
-        df['RSI'] = 100 - (100 / (1 + gain / loss))
+        gain = (delta.where(delta > 0, 0)).fillna(0).rolling(14).mean().iloc[-1]
+        loss = (-delta.where(delta < 0, 0)).fillna(0).rolling(14).mean().iloc[-1]
+        rsi = 100 - (100 / (1 + (gain / loss) if loss != 0 else 1))
         
-        low_min = df['Low'].rolling(14).min()
-        high_max = df['High'].rolling(14).max()
-        df['Stoch'] = 100 * ((df['Close'] - low_min) / (high_max - low_min))
-        return df.iloc[-1]
+        return {
+            'Price': float(last_row['Close']),
+            'SMA': float(sma),
+            'Upper': float(upper),
+            'Lower': float(lower),
+            'RSI': float(rsi)
+        }
     except: return None
 
 data = get_pro_data(asset)
 
-if data is not None and not data.empty:
-    price = float(data['Close'])
-    st.metric("PRICE:", f"{price:.5f}")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("RSI", f"{float(data['RSI']):.2f}")
-    c2.metric("STOCH", f"{float(data['Stoch']):.2f}")
-    c3.metric("TREND", "BULLISH" if price > float(data['SMA_20']) else "BEARISH")
+if data:
+    st.metric("PRICE:", f"{data['Price']:.5f}")
+    c1, c2 = st.columns(2)
+    c1.metric("RSI", f"{data['RSI']:.2f}")
+    c2.metric("TREND", "BULLISH" if data['Price'] > data['SMA'] else "BEARISH")
 
     if st.button("💀 ПОЛУЧИТЬ ПРИКАЗ НА ВХОД"):
         if not api_key: st.error("Введите API ключ")
         else:
             with st.spinner("AI-Scanning..."):
                 prompt = f"""
-                Ты — элитный скальпер. Проанализируй {asset} для Pocket Option.
-                Цена: {price}, RSI: {data['RSI']}, Stoch: {data['Stoch']}, Bollinger: {data['Lower']}-{data['Upper']}
+                Ты — элитный скальпер. Проанализируй {asset}.
+                Цена: {data['Price']}, RSI: {data['RSI']}, Bollinger: {data['Lower']}-{data['Upper']}.
                 
                 Выдай ПРИКАЗ:
                 1. SIGNAL: [CALL / PUT / WAIT]
                 2. TIME: [1 мин / 5 мин]
-                3. ENTRY: {price}
+                3. ENTRY: {data['Price']}
                 4. CONFIDENCE: [High/Medium/Low]
-                5. LOGIC: Почему вход.
+                5. LOGIC: Краткое обоснование.
                 """
                 genai.configure(api_key=api_key)
                 resp = genai.GenerativeModel('gemini-1.5-flash').generate_content(prompt).text
                 st.code(resp)
 else:
-    st.error("⚠️ Ошибка получения данных. Попробуйте другой актив.")
+    st.error("⚠️ Данные не получены. Попробуйте другой актив.")
