@@ -1,43 +1,60 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import numpy as np
 
-st.set_page_config(page_title="Elite Scalper M5", layout="centered")
-st.markdown("<h1 style='text-align: center; color: #ffd700;'>⚡ ELITE M5 SCALPER</h1>", unsafe_allow_html=True)
+# Элитный интерфейс
+st.set_page_config(page_title="ELITE QUANT CORE", layout="wide")
+st.markdown("""
+    <style>
+    .main {background-color: #050505;}
+    h1 {color: #ffd700; text-align: center; text-transform: uppercase; letter-spacing: 2px;}
+    .stMetric {background: #111; padding: 15px; border-left: 4px solid #ffd700;}
+    </style>
+""", unsafe_allow_html=True)
 
-# Меню выбора валюты
-asset = st.selectbox("Выберите актив:", ["XAUUSD=X", "EURUSD=X", "BTC-USD", "ETH-USD"])
+st.title("⚡ ELITE QUANTUM SCALPER")
 
-@st.cache_data(ttl=60)
-def get_m5_data(ticker):
+# Выбор котировок (включая Spot Gold XAU/USD)
+asset = st.selectbox("ВЫБОР АКТИВА:", ["XAUUSD=X", "GC=F", "EURUSD=X", "BTC-USD"])
+
+@st.cache_data(ttl=2) # Минимально возможный кеш для скорости
+def get_fast_data(ticker):
     try:
-        # Анализ графика M5 (как на вашем скриншоте)
-        df = yf.download(ticker, period="1d", interval="5m", progress=False)
-        if df.empty: return None
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
+        df = yf.download(ticker, period="1d", interval="1m", progress=False)
+        if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
         return df['Close']
     except: return None
 
-if st.button("🚀 АНАЛИЗИРОВАТЬ ГРАФИК M5"):
-    data = get_m5_data(asset)
+if st.button("🚀 EXECUTE QUANT ANALYSIS"):
+    data = get_fast_data(asset)
     
-    if data is not None and len(data) > 20:
+    if data is not None and len(data) > 30:
         price = float(data.iloc[-1])
-        # "Хакерский" ИИ-индикатор: быстрое пересечение EMA
-        fast_ema = data.ewm(span=5).mean().iloc[-1]
-        slow_ema = data.ewm(span=15).mean().iloc[-1]
         
-        st.metric(f"Цена {asset}", f"{price:.4f}")
+        # 1. Профессиональный ИИ: Трендовый анализ (EMA)
+        f_ema = data.ewm(span=5).mean().iloc[-1]
+        s_ema = data.ewm(span=20).mean().iloc[-1]
         
-        # Логика сигнала
-        if fast_ema > slow_ema:
-            st.markdown("<h2 style='text-align: center; color: #00ff00;'>🟢 СИГНАЛ: BUY (LONG)</h2>", unsafe_allow_html=True)
-            st.write("Импульс M5: Бычья фаза подтверждена.")
+        # 2. Хакерский ИИ: Z-Score (выявление ценовых аномалий)
+        std = data.iloc[-30:].std()
+        mean = data.iloc[-30:].mean()
+        z_score = (price - mean) / (std + 1e-9)
+        
+        # 3. Решающее правило (Ансамбль ИИ)
+        st.metric("CURRENT PRICE", f"{price:.4f}")
+        
+        col1, col2 = st.columns(2)
+        
+        # Логика: Вход в сделку при подтверждении тренда ИИ и аномалии волатильности
+        if z_score < -1.5 and f_ema > s_ema:
+            st.markdown("<h2 style='color:#00ff00;'>🟢 BUY SIGNAL: QUANTUM APPROVED</h2>", unsafe_allow_html=True)
+            st.write("Статус: Оптимизированный вход (Anomaly Detected)")
+        elif z_score > 1.5 and f_ema < s_ema:
+            st.markdown("<h2 style='color:#ff4b4b;'>🔴 SELL SIGNAL: QUANTUM APPROVED</h2>", unsafe_allow_html=True)
+            st.write("Статус: Оптимизированный вход (Anomaly Detected)")
         else:
-            st.markdown("<h2 style='text-align: center; color: #ff4b4b;'>🔴 СИГНАЛ: SELL (SHORT)</h2>", unsafe_allow_html=True)
-            st.write("Импульс M5: Медвежья фаза подтверждена.")
+            st.warning("🟡 QUANTUM CORE: СИГНАЛ НЕ ПОДТВЕРЖДЕН (Ожидание аномалии)")
             
-        st.info("Анализ проведен по свечам M5. EMA-ядро готово.")
     else:
-        st.error("Ошибка получения данных. Обновите страницу.")
+        st.error("QUANTUM CORE: ОШИБКА ДАННЫХ (НЕТ ЛАТЕНТНОСТИ)")
