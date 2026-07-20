@@ -1,4 +1,5 @@
-ccxt
-pandas
 streamlit
-
+yfinance
+pandas
+groq
+google-generativeai
