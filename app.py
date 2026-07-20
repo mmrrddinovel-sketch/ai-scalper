@@ -1,77 +1,70 @@
 import streamlit as st
+import yfinance as yf
 import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-import time
-import threading
+import google.generativeai as genai
 
-st.set_page_config(page_title="ScalpX", layout="wide", page_icon="🪙")
+# Настройка интерфейса
+st.set_page_config(page_title="HackerAI Ultimate PRO", layout="wide")
+st.markdown("<style>.main {background-color: #050505; color: #00ff00; font-family: 'Consolas', monospace;}</style>", unsafe_allow_html=True)
 
-# Инициализация данных
-if 'data' not in st.session_state:
-    now = datetime.now()
-    times = [now - timedelta(seconds=i*2) for i in range(50, 0, -1)]
-    prices = 4032.45 + np.cumsum(np.random.normal(0, 1.3, 50))
-    st.session_state.data = pd.DataFrame({'time': times, 'price': prices})
+st.title("💀 HackerAI: ULTIMATE PRO TERMINAL")
 
-if 'signals_history' not in st.session_state:
-    st.session_state.signals_history = []
-if 'running' not in st.session_state:
-    st.session_state.running = True
+# Расширенный список активов (валюты, крипта, золото)
+all_assets = [
+    "EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDCHF=X", 
+    "NZDUSD=X", "USDCAD=X", "EURGBP=X", "EURJPY=X", "GBPJPY=X", 
+    "BTC-USD", "ETH-USD", "GC=F"
+]
 
-def price_updater():
-    price = float(st.session_state.data['price'].iloc[-1])
-    while st.session_state.running:
-        time.sleep(1.8)
-        price += np.random.normal(0, 1.8)
-        new_time = datetime.now()
-        new_row = pd.DataFrame({'time': [new_time], 'price': [price]})
-        st.session_state.data = pd.concat([st.session_state.data, new_row]).tail(200)
+with st.sidebar:
+    api_key = st.text_input("ENTER GEMINI API KEY:", type="password")
+    asset = st.selectbox("ВЫБОР АКТИВА:", all_assets)
+    st.write("---")
+    st.info("Рекомендация: Торгуйте по сигналу только при CONFIDENCE: High")
 
-# Запуск обновлений
-if not any(t.name == "price_updater" for t in threading.enumerate()):
-    threading.Thread(target=price_updater, daemon=True, name="price_updater").start()
+# Получение данных
+def get_pro_data(symbol):
+    try:
+        df = yf.download(symbol, period="5d", interval="15m", progress=False)
+        df['SMA_20'] = df['Close'].rolling(20).mean()
+        df['StdDev'] = df['Close'].rolling(20).std()
+        df['Upper'] = df['SMA_20'] + (df['StdDev'] * 2)
+        df['Lower'] = df['SMA_20'] - (df['StdDev'] * 2)
+        gain = df['Close'].diff().where(df['Close'].diff() > 0, 0).rolling(14).mean()
+        loss = -df['Close'].diff().where(df['Close'].diff() < 0, 0).rolling(14).mean()
+        df['RSI'] = 100 - (100 / (1 + gain / loss))
+        low_min = df['Low'].rolling(14).min()
+        high_max = df['High'].rolling(14).max()
+        df['Stoch'] = 100 * ((df['Close'] - low_min) / (high_max - low_min))
+        return df.iloc[-1]
+    except: return None
 
-def generate_signal():
-    current = float(st.session_state.data['price'].iloc[-1])
-    ma9 = st.session_state.data['price'].rolling(9).mean().iloc[-1]
-    ma21 = st.session_state.data['price'].rolling(21).mean().iloc[-1]
-    
-    if current > ma9 > ma21:
-        return {"signal": "🟢 STRONG BUY", "reason": "Бычий тренд", "levels": "TP +18p | SL -9p", "price": round(current, 2)}
-    elif current < ma9 < ma21:
-        return {"signal": "🔴 STRONG SELL", "reason": "Медвежий тренд", "levels": "TP +15p | SL -8p", "price": round(current, 2)}
+data = get_pro_data(asset)
+
+if data is not None:
+    st.metric("PRICE:", f"{data['Close']:.5f}")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("RSI", f"{data['RSI']:.2f}")
+    c2.metric("STOCH", f"{data['Stoch']:.2f}")
+    c3.metric("TREND", "BULLISH" if data['Close'] > data['SMA_20'] else "BEARISH")
+
+if st.button("💀 ПОЛУЧИТЬ ПРИКАЗ НА ВХОД"):
+    if not api_key: st.error("ACCESS DENIED: Введите API ключ")
     else:
-        return {"signal": "🟡 НЕЙТРАЛЬНО", "reason": "Боковик", "levels": "Ждём пробоя", "price": round(current, 2)}
-
-# ==================== ИНТЕРФЕЙС ====================
-st.title("🪙 ScalpX — Скальпинг Бот")
-
-col1, col2 = st.columns([3, 2])
-
-with col1:
-    st.subheader("XAUUSD — Живой график")
-    st.line_chart(st.session_state.data.set_index('time')['price'], use_container_width=True)
-
-with col2:
-    current = float(st.session_state.data['price'].iloc[-1])
-    st.metric("Текущая цена XAUUSD", f"${current:.2f}")
-    
-    if st.button("📡 Запросить сигнал сейчас", type="primary", use_container_width=True):
-        with st.spinner("Анализирую рынок..."):
-            signal = generate_signal()
-            st.success(f"{signal['signal']} — ${signal['price']}")
-            st.caption(signal['reason'])
-            st.caption(signal['levels'])
+        with st.spinner("AI-Scanning..."):
+            prompt = f"""
+            Ты — элитный скальпер для Pocket Option. Проанализируй данные для {asset}:
+            Цена: {data['Close']}, RSI: {data['RSI']}, Stoch: {data['Stoch']}, Bollinger: {data['Lower']}-{data['Upper']}
             
-            st.session_state.signals_history.insert(0, signal)
-            if len(st.session_state.signals_history) > 8:
-                st.session_state.signals_history.pop()
-    
-    st.subheader("История сигналов")
-    for s in st.session_state.signals_history:
-        st.markdown(f"**{datetime.now().strftime('%H:%M')}** — {s['signal']} @ ${s['price']}")
-        st.caption(s['reason'])
-        st.divider()
-
-st.caption("Обновление каждые ~2 секунды")
+            Выдай ПРИКАЗ в следующем формате:
+            1. SIGNAL: [CALL / PUT]
+            2. EXPIRATION: [1 минута / 5 минут] (исходя из текущей волатильности)
+            3. ENTRY: [Текущая цена]
+            4. CONFIDENCE: [High/Medium/Low]
+            5. STRATEGY: (Кратко: почему именно сейчас вход)
+            
+            Если показатели не дают 100% уверенности, пиши СИГНАЛ: WAIT.
+            """
+            genai.configure(api_key=api_key)
+            resp = genai.GenerativeModel('gemini-1.5-flash').generate_content(prompt).text
+            st.code(resp)
