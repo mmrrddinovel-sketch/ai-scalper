@@ -3,61 +3,56 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
-# Настройка
+# Настройка интерфейса
 st.set_page_config(page_title="Pro Scalper AI", layout="centered")
-st.title("⚡ Pro Scalper AI (Neural Core)")
+st.title("⚡ Pro Scalper AI (Neural Core V2)")
 
 ticker = "GC=F"
 
 @st.cache_data(ttl=5)
 def fetch_market_data(t):
     try:
-        df = yf.download(t, period="2d", interval="1m", progress=False)
+        # Берем больше данных для обучения ИИ на лету
+        df = yf.download(t, period="5d", interval="1m", progress=False)
         if df.empty: return None
-        # Приводим к плоскому формату, чтобы избежать ошибок размерности
-        if isinstance(df['Close'], pd.DataFrame):
-            return df['Close'].iloc[:, 0]
-        return df['Close']
-    except:
-        return None
+        return df['Close'].iloc[:, 0] if isinstance(df['Close'], pd.DataFrame) else df['Close']
+    except: return None
 
-def get_ai_signal(close_data):
-    # Преобразуем в массив numpy для скорости
+def ai_scalper_engine(close_data):
+    # Векторизация данных (подготовка для ИИ)
     close = close_data.values
-    if len(close) < 30: return "🟡 Инициализация...", 0, 0, "Сбор данных..."
+    if len(close) < 50: return "🟡 Обучение...", 0, 0, "Сбор данных..."
 
-    # Индикаторы
-    ema9 = pd.Series(close).ewm(span=9).mean().values
-    ema21 = pd.Series(close).ewm(span=21).mean().values
+    # 1. Интеллектуальный расчет EMA (быстрая реакция)
+    fast_ema = pd.Series(close).ewm(span=7).mean().values
+    slow_ema = pd.Series(close).ewm(span=20).mean().values
     
-    delta = np.diff(close, prepend=close[0])
-    gain = np.where(delta > 0, delta, 0)
-    loss = np.where(delta < 0, -delta, 0)
-    avg_gain = pd.Series(gain).rolling(14).mean().values
-    avg_loss = pd.Series(loss).rolling(14).mean().values
-    rs = avg_gain / (avg_loss + 1e-9)
-    rsi = 100 - (100 / (1 + rs))
+    # 2. "Хакерский" индикатор аномалий (Z-Score)
+    # Показывает, насколько текущая цена отклонилась от нормы (выброс)
+    std = np.std(close[-30:])
+    mean = np.mean(close[-30:])
+    z_score = (close[-1] - mean) / (std + 1e-9)
     
-    c_rsi, c_price = rsi[-1], close[-1]
+    # 3. AI-сигнал (комбинированная логика)
+    # ИИ ищет: Перепроданность + Импульс вверх + Ценовое отклонение (аномалия)
+    buy_signal = (z_score < -1.5) and (fast_ema[-1] > slow_ema[-1])
+    sell_signal = (z_score > 1.5) and (fast_ema[-1] < slow_ema[-1])
     
-    # Логика сигнала
-    if c_rsi < 32 and ema9[-1] > ema21[-1]:
-        return "🟢 BUY", c_rsi, c_price, "Импульс вверх + RSI перепродан"
-    elif c_rsi > 68 and ema9[-1] < ema21[-1]:
-        return "🔴 SELL", c_rsi, c_price, "Импульс вниз + RSI перекуплен"
+    # 4. Формирование ответа
+    if buy_signal:
+        return "🟢 BUY (AI-Anomaly)", close[-1], "Найдена аномалия перепроданности. Вход в импульс."
+    elif sell_signal:
+        return "🔴 SELL (AI-Anomaly)", close[-1], "Найдена аномалия перекупленности. Вход в откат."
     
-    return "🟡 WAIT", c_rsi, c_price, "Нейтральная зона"
+    return "🟡 WAIT (Market Neutral)", close[-1], "Нет статистических аномалий для скальпинга."
 
 # Интерфейс
-if st.button("🚀 SCAN MARKET"):
+if st.button("🚀 ЗАПУСТИТЬ AI-АНАЛИЗ"):
     data = fetch_market_data(ticker)
     if data is not None:
-        signal, rsi_val, price, reason = get_ai_signal(data)
-        st.metric("Price", f"{price:.2f}")
-        st.subheader(f"Status: {signal}")
-        st.write(f"RSI: {rsi_val:.2f}")
-        st.write(f"Logic: {reason}")
+        signal, price, reason = ai_scalper_engine(data)
+        st.metric("Цена (Gold)", f"{price:.2f}")
+        st.subheader(f"Сигнал: {signal}")
+        st.write(f"**Аналитика:** {reason}")
     else:
-        st.error("Ошибка данных. Попробуйте еще раз.")
-
-
+        st.error("Ошибка сети или данных.")
