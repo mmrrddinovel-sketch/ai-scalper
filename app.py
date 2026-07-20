@@ -3,51 +3,46 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
-# Настройка страницы
-st.set_page_config(page_title="Pro Scalper AI", layout="centered")
+st.set_page_config(page_title="Elite Scalper Pro", layout="centered")
+st.markdown("<h1 style='text-align: center; color: #ffd700;'>⚡ ELITE SPOT SCALPER</h1>", unsafe_allow_html=True)
 
-# Элитный заголовок
-st.markdown("<h1 style='text-align: center; color: #ffd700;'>⚡ ELITE SCALPER AI</h1>", unsafe_allow_html=True)
-
-# Выбор актива
-ticker = st.selectbox("Выберите инструмент:", ["GC=F", "EURUSD=X", "BTC-USD", "ETH-USD"])
+# Использование тикера XAUUSD=X для спотового золота
+ticker = "XAUUSD=X"
 
 @st.cache_data(ttl=5)
-def get_market_data(t):
+def get_data(t):
     try:
-        # Загрузка данных с обработкой структуры
-        df = yf.download(t, period="2d", interval="1m", progress=False)
-        if df.empty: return None
-        
-        # Исправление структуры данных (универсальный метод для yfinance)
+        # Берем M5, так как у вас на скрине график M5
+        df = yf.download(t, period="2d", interval="5m", progress=False)
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
-            
         return df['Close']
-    except Exception:
-        return None
+    except: return None
 
-# Основная кнопка
-if st.button("🚀 АНАЛИЗ РЫНКА"):
-    data = get_market_data(ticker)
-    
-    if data is not None and len(data) > 25:
-        # Расчет индикаторов
+if st.button("🚀 ЗАПУСТИТЬ ИИ-АНАЛИЗ (SPOT)"):
+    data = get_data(ticker)
+    if data is not None and len(data) > 20:
         price = float(data.iloc[-1])
-        ema_fast = data.ewm(span=5).mean().iloc[-1]
-        ema_slow = data.ewm(span=20).mean().iloc[-1]
         
-        # Вывод показателей
-        st.metric("Текущая цена", f"{price:.4f}")
+        # Индикатор импульса (Momentum)
+        momentum = data.iloc[-1] - data.iloc[-5]
+        # EMA для тренда
+        ema_f = data.ewm(span=5).mean().iloc[-1]
+        ema_s = data.ewm(span=20).mean().iloc[-1]
         
-        # Профессиональная логика скальпинга
-        if ema_fast > ema_slow:
+        st.metric("Цена SPOT GOLD (XAU/USD)", f"{price:.2f}")
+        
+        # Хакерская логика: ИИ-фильтр по импульсу и тренду
+        if momentum > 0 and ema_f > ema_s:
             st.markdown("<h2 style='text-align: center; color: #00ff00;'>🟢 СИГНАЛ: BUY</h2>", unsafe_allow_html=True)
-            st.info("Импульс восходящий: Быстрая EMA выше медленной.")
-        else:
+            st.info("Импульс подтвержден: Цена растет и выше EMA.")
+        elif momentum < 0 and ema_f < ema_s:
             st.markdown("<h2 style='text-align: center; color: #ff4b4b;'>🔴 СИГНАЛ: SELL</h2>", unsafe_allow_html=True)
-            st.error("Импульс нисходящий: Быстрая EMA ниже медленной.")
+            st.error("Импульс подтвержден: Цена падает и ниже EMA.")
+        else:
+            st.warning("🟡 СОСТОЯНИЕ: ФЛЭТ (Ждем подтверждения)")
             
-        st.write(f"Анализ завершен. Параметры EMA(5/20).")
+        st.write(f"Индикатор Momentum: {momentum:.3f}")
     else:
-        st.error("Ошибка получения данных. Попробуйте обновить страницу.")
+        st.error("Ошибка сети или данных.")
+
